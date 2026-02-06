@@ -1,0 +1,7 @@
+{
+  "name": "Marketplace",
+  "description": "A sophisticated marketplace for handmade goods, featuring AI-powered search, product description generation, and an intuitive seller dashboard.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
