@@ -10,8 +10,8 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) => {
-  // Construct a safe URL path for the seller profile
-  const sellerPath = encodeURIComponent(product.seller || 'artisan');
+  const sellerPath = encodeURIComponent(product.seller_name || 'artisan');
+  const primaryImage = product.images?.[0] || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?auto=format&fit=crop&q=80&w=800';
 
   return (
     <div 
@@ -20,7 +20,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) => {
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-stone-100 dark:bg-stone-800">
         <img 
-          src={product.image} 
+          src={primaryImage} 
           alt={product.title}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[1.5s] ease-out"
           loading="lazy"
@@ -47,7 +47,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) => {
             className="text-[10px] text-stone-500 dark:text-stone-400 font-black uppercase tracking-[0.2em] hover:text-brand-600 transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
-            {product.seller}
+            {product.seller_name}
           </Link>
         </div>
         

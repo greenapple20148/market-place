@@ -2,10 +2,38 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIProductSuggestion } from "../types";
 
-// Fix: Always use named parameter and direct process.env.API_KEY without fallback
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
+
+// Add enhanceSearch to fix the error in Navbar.tsx
+export const enhanceSearch = async (query: string): Promise<string[]> => {
+  const ai = getAI();
+  if (!ai) return [];
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate 5 related search terms or tags for a handmade marketplace based on the query: "${query}". Return only a JSON array of strings.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+    return JSON.parse(response.text || '[]');
+  } catch (err) {
+    console.error("Search enhancement failed:", err);
+    return [];
+  }
+};
 
 export const generateProductDetails = async (input: string): Promise<AIProductSuggestion> => {
+  const ai = getAI();
+  if (!ai) throw new Error("AI service unavailable: Missing API Key");
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Based on the user's basic product idea "${input}", generate a professional Etsy-style product listing.`,
@@ -14,47 +42,86 @@ export const generateProductDetails = async (input: string): Promise<AIProductSu
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING, description: "Catchy product title" },
-          description: { type: Type.STRING, description: "Detailed, persuasive product description" },
-          suggestedPrice: { type: Type.NUMBER, description: "Market-competitive price in USD" },
-          tags: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING },
-            description: "Search keywords" 
-          },
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          suggestedPrice: { type: Type.NUMBER },
+          tags: { type: Type.ARRAY, items: { type: Type.STRING } },
         },
         required: ["title", "description", "suggestedPrice", "tags"],
       },
     },
   });
+  return JSON.parse(response.text || '{}');
+};
+
+/**
+ * AI vision check for safety and compliance.
+ * Distinguishes between 'safe' (allow), 'unsafe' (prohibit), and 'flagged' (manual review).
+ */
+export const scanImageForIntegrity = async (base64Data: string, mimeType: string): Promise<{ safe: boolean; flagged: boolean; reason: string }> => {
+  const ai = getAI();
+  if (!ai) return { safe: true, flagged: false, reason: "AI not configured" };
 
   try {
-    // Fix: Access .text property directly (not a method)
-    return JSON.parse(response.text || '{}') as AIProductSuggestion;
-  } catch (e) {
-    console.error("Failed to parse Gemini response", e);
-    throw new Error("Could not generate product details.");
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          parts: [
+            { inlineData: { data: base64Data.split(',')[1], mimeType } },
+            { text: `Analyze this image for an artisanal handmade marketplace.
+            1. Safe: Does it contain explicit NSFW, violence, or prohibited symbols?
+            2. Flagged: Does it look like a mass-produced stock photo, or does it lack artisanal qualities?
+            Return JSON: { "safe": boolean, "flagged": boolean, "reason": string }` },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            safe: { type: Type.BOOLEAN },
+            flagged: { type: Type.BOOLEAN },
+            reason: { type: Type.STRING }
+          },
+          required: ["safe", "flagged", "reason"]
+        }
+      },
+    });
+    return JSON.parse(response.text || '{"safe":true, "flagged":false, "reason": ""}');
+  } catch (err) {
+    console.error("Image scan failed:", err);
+    return { safe: true, flagged: false, reason: "Scan error" };
   }
 };
 
-export const enhanceSearch = async (query: string): Promise<string[]> => {
+export interface ModerationResult {
+  isLikelyMassProduced: boolean;
+  confidenceScore: number;
+  reason: string;
+}
+
+export const analyzeProductForModeration = async (title: string, description: string): Promise<ModerationResult> => {
+  const ai = getAI();
+  if (!ai) return { isLikelyMassProduced: false, confidenceScore: 0, reason: "AI Service Offline" };
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `The user searched for "${query}" in a handmade marketplace. Generate 5 broader or related search tags that might interest them. Return as a simple JSON array of strings.`,
+    contents: `Analyze listing for non-handmade indicators. Title: "${title}" Description: "${description}"`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
+        type: Type.OBJECT,
+        properties: {
+          isLikelyMassProduced: { type: Type.BOOLEAN },
+          confidenceScore: { type: Type.NUMBER },
+          reason: { type: Type.STRING }
+        },
+        required: ["isLikelyMassProduced", "confidenceScore", "reason"]
       }
     }
   });
-
-  try {
-    return JSON.parse(response.text || '[]') as string[];
-  } catch {
-    return [];
-  }
+  return JSON.parse(response.text || '{}');
 };
 
 export interface GrowthTip {
@@ -64,9 +131,11 @@ export interface GrowthTip {
 }
 
 export const getGrowthTips = async (): Promise<GrowthTip[]> => {
+  const ai = getAI();
+  if (!ai) return [];
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: "Generate 3 actionable, professional growth tips for an online artisan seller. Focus on things like SEO, photography, customer engagement, or seasonal trends. Return as a JSON array of objects with title, advice, and impact level.",
+    contents: "Generate 3 growth tips for an online artisan. Return JSON array.",
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -83,10 +152,5 @@ export const getGrowthTips = async (): Promise<GrowthTip[]> => {
       }
     }
   });
-
-  try {
-    return JSON.parse(response.text || '[]') as GrowthTip[];
-  } catch {
-    return [];
-  }
+  return JSON.parse(response.text || '[]');
 };

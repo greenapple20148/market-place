@@ -9,6 +9,28 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://js.stripe.com/v3/"></script>
   <script>
+    // Essential polyfills for browser environments
+    if (typeof global === 'undefined') {
+      window.global = window;
+    }
+    
+    // Shim process object for libraries that expect it
+    if (typeof process === 'undefined') {
+      window.process = {
+        env: {},
+        nextTick: function(fn) { setTimeout(fn, 0); },
+        browser: true
+      };
+    }
+
+    // Buffer polyfill
+    if (typeof Buffer === 'undefined') {
+      window.Buffer = {
+        isBuffer: () => false,
+        from: (data) => new Uint8Array(data),
+      };
+    }
+    
     tailwind.config = {
       darkMode: 'class',
       theme: {
@@ -108,8 +130,10 @@
     "react/": "https://esm.sh/react@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4",
     "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0"
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-easy-crop": "https://esm.sh/react-easy-crop@^5.2.0"
   }
 }
 </script>

@@ -11,9 +11,15 @@ import ProductForm from './pages/ProductForm';
 import ManageInventory from './pages/ManageInventory';
 import Checkout from './pages/Checkout';
 import Auth from './pages/Auth';
+import SellerOnboarding from './pages/SellerOnboarding'; 
+import LegalTerms from './pages/LegalTerms'; 
+import ModerationHub from './pages/ModerationHub'; // New Import
 import { authService } from './services/auth';
+import { profilesService } from './services/profiles';
+import { productsService } from './services/products';
 import { supabase, isSupabaseConfigured } from './services/supabase';
-import { X, Star, Heart, Share2, Info, Plus, Minus, ShoppingBag, Check, Database, WifiOff } from 'lucide-react';
+// Added CheckCircle2 and Loader2 icons to imports to fix line 319 and 327 errors
+import { X, Star, Heart, Share2, Info, Plus, Minus, ShoppingBag, Check, Database, WifiOff, ChevronLeft, ChevronRight, Flag, AlertTriangle, CheckCircle2, Loader2, ShieldAlert } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; user: User | null }> = ({ children, user }) => {
   const location = useLocation();
@@ -27,27 +33,47 @@ const App: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [modalQty, setModalQty] = useState(1);
   const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  
+  // Reporting state
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
 
   useEffect(() => {
-    // Initial fetch
-    authService.getCurrentUser().then(user => {
-      setCurrentUser(user);
-      setIsAuthReady(true);
-    });
+    setActiveImageIndex(0);
+    setModalQty(1);
+    setIsReporting(false);
+    setReportSuccess(false);
+  }, [selectedProduct?.id]);
 
-    // Supabase auth listener (Only if configured)
+  useEffect(() => {
+    const initAuth = async () => {
+      const user = await authService.getCurrentUser();
+      if (user) {
+        const profile = await profilesService.getProfile(user.id);
+        setCurrentUser({ ...user, ...profile });
+      } else {
+        setCurrentUser(null);
+      }
+      setIsAuthReady(true);
+    };
+
+    initAuth();
+
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
+          const profile = await profilesService.getProfile(session.user.id);
           setCurrentUser({
             id: session.user.id,
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
             email: session.user.email || '',
-            avatar: session.user.user_metadata?.avatar_url
+            avatar: session.user.user_metadata?.avatar_url,
+            ...profile
           });
         } else {
           setCurrentUser(null);
@@ -99,6 +125,23 @@ const App: React.FC = () => {
     }, 800);
   };
 
+  const handleReport = async () => {
+    if (!selectedProduct) return;
+    setIsReporting(true);
+    try {
+      await productsService.reportProduct(selectedProduct.id, "User reported as non-handmade/mass-produced.");
+      setReportSuccess(true);
+      setTimeout(() => {
+        setSelectedProduct(null);
+        setReportSuccess(false);
+      }, 1500);
+    } catch (err) {
+      alert("Reporting failed. Try again.");
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
   const updateCartQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
@@ -131,7 +174,6 @@ const App: React.FC = () => {
           onLogout={handleLogout}
         />
         
-        {/* Backend Connection Status Indicator */}
         {!isSupabaseConfigured && (
           <div className="bg-amber-500/10 dark:bg-amber-500/5 text-amber-700 dark:text-amber-500 px-4 py-2 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] border-b border-amber-500/20">
             <WifiOff className="w-3 h-3" />
@@ -143,11 +185,28 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Home onProductClick={setSelectedProduct} />} />
             <Route path="/auth" element={<Auth onLogin={setCurrentUser} />} />
+            <Route path="/terms" element={<LegalTerms />} />
+            <Route 
+              path="/moderation" 
+              element={
+                <ProtectedRoute user={currentUser}>
+                  <ModerationHub />
+                </ProtectedRoute>
+              } 
+            />
             <Route 
               path="/seller" 
               element={
                 <ProtectedRoute user={currentUser}>
                   <SellerDashboard user={currentUser!} />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/seller/onboarding" 
+              element={
+                <ProtectedRoute user={currentUser}>
+                  <SellerOnboarding user={currentUser!} onUpdateUser={setCurrentUser} />
                 </ProtectedRoute>
               } 
             />
@@ -178,9 +237,7 @@ const App: React.FC = () => {
             <Route 
               path="/checkout" 
               element={
-                <ProtectedRoute user={currentUser}>
                   <Checkout items={cart} onClearCart={clearCart} />
-                </ProtectedRoute>
               } 
             />
             <Route path="/profile/:sellerName" element={<SellerProfile onProductClick={setSelectedProduct} />} />
@@ -199,16 +256,57 @@ const App: React.FC = () => {
         {selectedProduct && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
             <div className="absolute inset-0 bg-stone-900/60 dark:bg-black/80 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setSelectedProduct(null)} />
-            <div className="relative bg-white dark:bg-stone-900 max-w-5xl w-full max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-500 border border-stone-100 dark:border-stone-800">
+            <div className="relative bg-white dark:bg-stone-900 max-w-6xl w-full max-h-[90vh] overflow-hidden rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-500 border border-stone-100 dark:border-stone-800">
               <button onClick={() => setSelectedProduct(null)} className="absolute top-6 right-6 z-20 p-2.5 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl rounded-full shadow-lg hover:text-brand-600 transition-colors text-stone-900 dark:text-stone-50"><X className="w-6 h-6" /></button>
-              <div className="md:w-1/2 bg-stone-100 dark:bg-stone-800 sticky top-0 md:relative overflow-hidden">
-                <img src={selectedProduct.image} alt={selectedProduct.title} className="w-full h-full object-cover min-h-[350px] max-h-[450px] md:max-h-none transform hover:scale-110 transition-transform duration-1000" />
+              
+              {/* Gallery */}
+              <div className="md:w-3/5 bg-stone-100 dark:bg-stone-800 relative flex flex-col h-full">
+                <div className="flex-1 relative overflow-hidden group">
+                  <img 
+                    src={selectedProduct.images?.[activeImageIndex]} 
+                    alt={selectedProduct.title} 
+                    className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-1000" 
+                  />
+                  
+                  {selectedProduct.images && selectedProduct.images.length > 1 && (
+                    <>
+                      <button 
+                        onClick={() => setActiveImageIndex(prev => (prev === 0 ? selectedProduct.images.length - 1 : prev - 1))}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-stone-900/80 rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white dark:hover:bg-stone-900"
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button 
+                        onClick={() => setActiveImageIndex(prev => (prev === selectedProduct.images.length - 1 ? 0 : prev + 1))}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/80 dark:bg-stone-900/80 rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white dark:hover:bg-stone-900"
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {selectedProduct.images && selectedProduct.images.length > 1 && (
+                  <div className="flex gap-2 p-4 bg-white/50 dark:bg-black/20 backdrop-blur-md overflow-x-auto no-scrollbar">
+                    {selectedProduct.images.map((img, idx) => (
+                      <button 
+                        key={idx} 
+                        onClick={() => setActiveImageIndex(idx)}
+                        className={`w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${activeImageIndex === idx ? 'border-brand-500 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      >
+                        <img src={img} className="w-full h-full object-cover" alt={`Thumb ${idx + 1}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="md:w-1/2 p-8 md:p-14 flex flex-col justify-between">
+
+              {/* Info */}
+              <div className="md:w-2/5 p-8 md:p-14 flex flex-col justify-between overflow-y-auto">
                 <div className="space-y-8">
                   <div className="space-y-3">
                     <p className="text-xs font-black text-brand-600 uppercase tracking-[0.25em]">{selectedProduct.category}</p>
-                    <h2 className="text-3xl md:text-5xl font-black text-stone-900 dark:text-stone-50 leading-tight serif">{selectedProduct.title}</h2>
+                    <h2 className="text-3xl md:text-4xl font-black text-stone-900 dark:text-stone-50 leading-tight serif">{selectedProduct.title}</h2>
                     <div className="flex flex-wrap items-center gap-4 pt-2">
                       <div className="flex items-center text-yellow-500">
                         <Star className="w-5 h-5 fill-current" />
@@ -216,14 +314,33 @@ const App: React.FC = () => {
                         <span className="ml-1.5 text-stone-400 font-medium">({selectedProduct.reviews} reviews)</span>
                       </div>
                       <span className="text-stone-500 dark:text-stone-400 font-medium">
-                        Crafted by <Link to={`/profile/${encodeURIComponent(selectedProduct.seller)}`} onClick={() => setSelectedProduct(null)} className="text-stone-900 dark:text-stone-50 font-black hover:text-brand-600 hover:underline cursor-pointer transition-colors">{selectedProduct.seller}</Link>
+                        Crafted by <Link to={`/profile/${encodeURIComponent(selectedProduct.seller_name)}`} onClick={() => setSelectedProduct(null)} className="text-stone-900 dark:text-stone-50 font-black hover:text-brand-600 hover:underline cursor-pointer transition-colors">{selectedProduct.seller_name}</Link>
                       </span>
                     </div>
                   </div>
-                  <p className="text-4xl md:text-5xl font-black text-stone-900 dark:text-stone-50">${selectedProduct.price.toFixed(2)}</p>
+                  <p className="text-4xl font-black text-stone-900 dark:text-stone-50">${selectedProduct.price.toFixed(2)}</p>
                   <div className="bg-brand-50/50 dark:bg-brand-900/10 p-6 rounded-[2rem] border border-brand-100 dark:border-brand-900/30">
-                    <p className="text-stone-700 dark:text-stone-300 leading-relaxed text-lg italic serif">"{selectedProduct.description}"</p>
+                    <p className="text-stone-700 dark:text-stone-300 leading-relaxed text-sm italic serif">"{selectedProduct.description}"</p>
                   </div>
+                  
+                  {/* Reporting Section */}
+                  <div className="pt-4 border-t border-stone-100 dark:border-stone-800">
+                    {reportSuccess ? (
+                      <div className="bg-green-50 dark:bg-green-900/20 text-green-600 p-4 rounded-2xl flex items-center gap-3 text-xs font-black uppercase">
+                        <CheckCircle2 className="w-4 h-4" /> Integrity report dispatched
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={handleReport}
+                        disabled={isReporting}
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-stone-300 hover:text-red-500 transition-colors"
+                      >
+                        {isReporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Flag className="w-3 h-3" />}
+                        Report suspicious listing
+                      </button>
+                    )}
+                  </div>
+
                   <div className="space-y-5">
                     <div className="flex flex-col gap-3">
                       <label className="text-xs font-black text-stone-400 uppercase tracking-widest">Quantity</label>
@@ -252,6 +369,12 @@ const App: React.FC = () => {
             <p className="mt-4 text-stone-400 italic">"Supporting human creativity through meaningful commerce."</p>
             <div className="mt-8 flex justify-center gap-8 text-stone-500 text-xs font-bold uppercase tracking-widest">
               <p>&copy; 2024 Marketplace</p>
+              <Link to="/terms" className="hover:text-white transition-colors">Integrity Terms</Link>
+              {currentUser && (
+                <Link to="/moderation" className="hover:text-brand-500 transition-colors flex items-center gap-1.5 ml-4">
+                  <ShieldAlert className="w-3.5 h-3.5" /> Moderation
+                </Link>
+              )}
             </div>
           </div>
         </footer>

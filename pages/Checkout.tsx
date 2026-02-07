@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, CreditCard, ShoppingBag, CheckCircle2, ChevronRight, ArrowLeft, Loader2, Sparkles, Package, ShieldCheck, Lock } from 'lucide-react';
+import { MapPin, CreditCard, ShoppingBag, CheckCircle2, ChevronRight, ArrowLeft, Loader2, Sparkles, Package, ShieldCheck, Lock, Mail } from 'lucide-react';
 import { CartItem, User } from '../types';
 import { ordersService } from '../services/orders';
 import { authService } from '../services/auth';
@@ -21,9 +21,11 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [stripeError, setStripeError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   const [shippingData, setShippingData] = useState({
     name: '',
+    email: '', // Added for Guest Checkout
     address: '',
     city: '',
     postalCode: ''
@@ -37,12 +39,30 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
   
   const navigate = useNavigate();
 
+  useEffect(() => {
+    authService.getCurrentUser().then(user => {
+      if (user) {
+        setCurrentUser(user);
+        setShippingData(prev => ({ ...prev, name: user.name, email: user.email }));
+      }
+    });
+  }, []);
+
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shipping = subtotal > 100 ? 0 : 12.99;
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
 
   const handleNextStep = () => {
+    if (step === 1) {
+       // Simple validation
+       if (!shippingData.name || !shippingData.email || !shippingData.address) {
+          setStripeError("Please complete all shipping fields.");
+          return;
+       }
+       setStripeError(null);
+    }
+    
     if (step < 3) {
       setIsLoading(true);
       setTimeout(() => {
@@ -59,27 +79,18 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
     setIsLoading(true);
     setStripeError(null);
     try {
-      const user = await authService.getCurrentUser();
-      if (!user) throw new Error("User must be logged in to checkout");
-
       const stripe = await stripePromise;
       if (!stripe) throw new Error("Stripe failed to initialize");
 
-      // 1. Simulating backend call to create PaymentIntent
-      // In a real app: const response = await fetch('/api/create-payment-intent', { method: 'POST', body: JSON.stringify({ amount: total }) });
-      // const { clientSecret } = await response.json();
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network latency
+      // Simulating Payment Processing
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
 
-      // 2. Simulating stripe.confirmCardPayment
-      // Real code: const result = await stripe.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } });
-      // if (result.error) throw result.error;
-
-      // 3. Persist order to Supabase
+      // 3. Persist order (Guest or Logged In)
       const order = await ordersService.createOrder(
-        user.id,
+        currentUser?.id || null, // Allow null for Guest
         items,
         total,
-        shippingData
+        { ...shippingData, guest_email: !currentUser ? shippingData.email : undefined }
       );
 
       setOrderNumber(order.id.split('-')[0].toUpperCase());
@@ -136,8 +147,8 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
               <span className="font-black dark:text-stone-50 text-sm">#MP-{orderNumber}</span>
             </div>
             <div className="flex justify-between items-center pb-4 border-b border-stone-50 dark:border-stone-800">
-              <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">Payment Status</span>
-              <span className="font-black text-green-600 text-sm uppercase">Verified</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">Sent To</span>
+              <span className="font-black text-stone-900 dark:text-stone-50 text-sm uppercase">{shippingData.email}</span>
             </div>
             <p className="text-xs text-stone-400 font-medium italic text-center">
               A receipt has been dispatched to your digital mailbox.
@@ -148,9 +159,11 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
             <Link to="/" className="flex-1 bg-stone-900 dark:bg-brand-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-brand-600 transition-all uppercase text-xs tracking-widest">
               Back to Marketplace
             </Link>
-            <button className="flex-1 border-2 border-stone-100 dark:border-stone-800 text-stone-600 dark:text-stone-400 font-black py-5 rounded-2xl hover:bg-stone-50 dark:hover:bg-stone-800 transition-all uppercase text-xs tracking-widest">
-              Track Shipment
-            </button>
+            {!currentUser && (
+               <Link to="/auth" className="flex-1 border-2 border-brand-500 text-brand-600 font-black py-5 rounded-2xl hover:bg-brand-50 transition-all uppercase text-xs tracking-widest">
+                 Join to Track Shipments
+               </Link>
+            )}
           </div>
         </div>
       </div>
@@ -186,16 +199,34 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
             
             {step === 1 && (
               <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-brand-50 dark:bg-brand-900/20 text-brand-600 rounded-2xl">
-                    <MapPin className="w-6 h-6" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-brand-50 dark:bg-brand-900/20 text-brand-600 rounded-2xl">
+                      <MapPin className="w-6 h-6" />
+                    </div>
+                    <h2 className="text-3xl font-black serif dark:text-stone-50">Shipping Destination</h2>
                   </div>
-                  <h2 className="text-3xl font-black serif dark:text-stone-50">Shipping Destination</h2>
+                  {!currentUser && (
+                    <Link to="/auth" className="text-[10px] font-black uppercase text-brand-600 hover:underline">Sign in for faster checkout</Link>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-2">Full Identity</label>
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-2">Contact Email</label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-300 group-focus-within:text-brand-500" />
+                      <input 
+                        type="email" 
+                        className="w-full bg-stone-50 dark:bg-stone-800 border-2 border-transparent focus:border-brand-500 rounded-2xl py-4 pl-12 pr-4 outline-none dark:text-stone-50 font-medium" 
+                        placeholder="your@email.com"
+                        value={shippingData.email}
+                        onChange={(e) => setShippingData({...shippingData, email: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-2">Recipient Name</label>
                     <input 
                       type="text" 
                       className="w-full bg-stone-50 dark:bg-stone-800 border-2 border-transparent focus:border-brand-500 rounded-2xl p-4 outline-none dark:text-stone-50 font-medium" 
@@ -272,10 +303,6 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
                             value={cardData.number}
                             onChange={(e) => setCardData({...cardData, number: e.target.value})}
                           />
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-1">
-                            <div className="w-8 h-5 bg-stone-200 dark:bg-stone-700 rounded-sm" />
-                            <div className="w-8 h-5 bg-stone-200 dark:bg-stone-700 rounded-sm" />
-                          </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -302,10 +329,6 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
                       </div>
                     </div>
                   </div>
-
-                  <p className="text-[10px] text-stone-400 text-center font-medium leading-relaxed">
-                    By clicking continue, you agree to Stripe's Services Agreement and Marketplace's Terms of Sale. Your payment data is encrypted and handled exclusively by Stripe.
-                  </p>
                 </div>
               </div>
             )}
@@ -323,19 +346,12 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
                   <div className="bg-stone-50 dark:bg-stone-800/30 p-6 rounded-[2rem] border border-stone-100 dark:border-stone-800 space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Shipping To</p>
-                        <p className="text-sm font-black dark:text-stone-50">{shippingData.name}</p>
+                        <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Shipping & Receipt To</p>
+                        <p className="text-sm font-black dark:text-stone-50">{shippingData.name} ({shippingData.email})</p>
                         <p className="text-xs text-stone-500 dark:text-stone-400">{shippingData.address}, {shippingData.city}</p>
                       </div>
                       <button onClick={() => setStep(1)} className="text-[10px] font-black uppercase text-brand-600 hover:underline">Edit</button>
                     </div>
-                  </div>
-
-                  <div className="p-6 bg-brand-50 dark:bg-brand-900/20 rounded-[2rem] border border-brand-100 dark:border-brand-900/30 flex items-start gap-4">
-                    <Sparkles className="w-6 h-6 text-brand-600 mt-1" />
-                    <p className="text-xs text-brand-900 dark:text-brand-400 font-medium leading-relaxed italic">
-                      "Every item in your basket is handmade with care. Your purchase contributes directly to the sustainability of artisan communities."
-                    </p>
                   </div>
                 </div>
               </div>
@@ -377,7 +393,7 @@ const Checkout: React.FC<CheckoutProps> = ({ items, onClearCart }) => {
               {items.map(item => (
                 <div key={item.id} className="flex gap-4 group">
                   <div className="w-16 h-16 rounded-xl overflow-hidden bg-stone-100 dark:bg-stone-800 flex-shrink-0">
-                    <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                    <img src={item.images?.[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                   </div>
                   <div className="flex-1 space-y-0.5">
                     <p className="text-xs font-black text-stone-900 dark:text-stone-50 line-clamp-1">{item.title}</p>

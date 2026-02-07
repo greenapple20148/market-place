@@ -1,19 +1,33 @@
 
+export interface ModerationLog {
+  timestamp: string;
+  type: 'ai_scan' | 'manual_review' | 'user_report';
+  status: string;
+  reason: string;
+  confidence?: number;
+}
+
 export interface Product {
   id: string;
   title: string;
   description: string;
   price: number;
-  seller: string;
-  seller_id?: string;
-  image: string;
+  seller_name: string;
+  seller_id: string;
+  images: string[];
   category: string;
   rating: number;
   reviews_count?: number;
-  reviews: number; // For compatibility with older code
+  reviews: number;
   tags: string[];
   stock_quantity?: number;
   status?: 'active' | 'draft' | 'archived';
+  declared_handmade?: boolean;
+  moderation_status?: 'approved' | 'pending_review' | 'flagged' | 'rejected';
+  moderation_reason?: string;
+  moderation_logs?: ModerationLog[]; // Added for compliance auditing
+  is_flagged?: boolean;
+  created_at?: string;
 }
 
 export interface CartItem extends Product {
@@ -25,6 +39,11 @@ export interface User {
   name: string;
   email: string;
   avatar?: string;
+  onboarding_completed?: boolean;
+  verification_status?: 'unverified' | 'pending' | 'verified';
+  shop_name?: string;
+  bank_last_four?: string;
+  seller_declaration_signed?: boolean;
 }
 
 export enum Category {
@@ -45,7 +64,8 @@ export interface AIProductSuggestion {
 
 export interface Order {
   id?: string;
-  user_id: string;
+  user_id?: string;
+  guest_email?: string;
   total_amount: number;
   status: string;
   shipping_address: any;

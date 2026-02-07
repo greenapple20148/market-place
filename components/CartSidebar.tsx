@@ -53,10 +53,10 @@ const CartSidebar: React.FC<CartSidebarProps> = ({ isOpen, onClose, items, onUpd
           ) : (
             items.map((item) => (
               <div key={item.id} className="flex gap-4 group">
-                <img src={item.image} alt={item.title} className="w-20 h-20 object-cover rounded-2xl bg-stone-100 dark:bg-stone-800 shadow-sm" />
+                <img src={item.images?.[0]} alt={item.title} className="w-20 h-20 object-cover rounded-2xl bg-stone-100 dark:bg-stone-800 shadow-sm" />
                 <div className="flex-1 space-y-1">
                   <h4 className="font-semibold text-stone-900 dark:text-stone-50 text-sm line-clamp-2">{item.title}</h4>
-                  <p className="text-[10px] text-stone-400 font-black uppercase tracking-widest">Sold by {item.seller}</p>
+                  <p className="text-[10px] text-stone-400 font-black uppercase tracking-widest">Sold by {item.seller_name}</p>
                   <div className="flex justify-between items-center pt-2">
                     <div className="flex items-center border border-stone-200 dark:border-stone-700 rounded-xl bg-white dark:bg-stone-800 overflow-hidden">
                       <button 
